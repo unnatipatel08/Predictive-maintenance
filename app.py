@@ -626,4 +626,4 @@ elif section == "Machine Management":
                     st.rerun()
 
                 except sqlite3.Error as error:
-                    st.error(f"Database error
+                  st.error(f"Database error: {error}")
