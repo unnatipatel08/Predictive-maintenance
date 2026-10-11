@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="Predictive Maintenance",
+    page_title="Predictive Maintenance System",
     page_icon="⚙️",
     layout="wide"
 )
@@ -35,11 +35,11 @@ h1, h2, h3 {
 .stDownloadButton > button {
     background-color: #77BDFB;
     color: #12304A;
-    border-radius: 8px;
     border: none;
+    border-radius: 8px;
 }
 [data-testid="stMetric"] {
-    background: white;
+    background-color: white;
     border: 1px solid #D6E8FF;
     padding: 15px;
     border-radius: 12px;
@@ -56,25 +56,26 @@ def connect_db():
 def setup_database():
     with connect_db() as conn:
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS machines (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            machine_type TEXT,
-            location TEXT,
-            temperature REAL,
-            vibration REAL,
-            hours_used REAL,
-            status TEXT
-        )
+            CREATE TABLE IF NOT EXISTS machines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                machine_type TEXT,
+                location TEXT,
+                temperature REAL,
+                vibration REAL,
+                hours_used REAL,
+                status TEXT
+            )
         """)
+
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            machine_id INTEGER,
-            result TEXT,
-            risk REAL,
-            created_at TEXT
-        )
+            CREATE TABLE IF NOT EXISTS predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                machine_id INTEGER,
+                result TEXT,
+                risk REAL,
+                created_at TEXT
+            )
         """)
 
 
@@ -89,13 +90,13 @@ def add_machine(name, machine_type, location, temperature,
                 vibration, hours_used, status):
     with connect_db() as conn:
         conn.execute("""
-        INSERT INTO machines
-        (name, machine_type, location, temperature,
-         vibration, hours_used, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO machines
+            (name, machine_type, location, temperature,
+             vibration, hours_used, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            name, machine_type, location,
-            temperature, vibration, hours_used, status
+            name, machine_type, location, temperature,
+            vibration, hours_used, status
         ))
 
 
@@ -103,29 +104,33 @@ def update_machine(machine_id, name, machine_type, location,
                    temperature, vibration, hours_used, status):
     with connect_db() as conn:
         conn.execute("""
-        UPDATE machines
-        SET name=?, machine_type=?, location=?,
-            temperature=?, vibration=?, hours_used=?, status=?
-        WHERE id=?
+            UPDATE machines
+            SET name=?, machine_type=?, location=?,
+                temperature=?, vibration=?, hours_used=?, status=?
+            WHERE id=?
         """, (
-            name, machine_type, location,
-            temperature, vibration, hours_used, status, machine_id
+            name, machine_type, location, temperature,
+            vibration, hours_used, status, machine_id
         ))
 
 
 def delete_machine(machine_id):
     with connect_db() as conn:
-        conn.execute("DELETE FROM predictions WHERE machine_id=?",
-                     (machine_id,))
-        conn.execute("DELETE FROM machines WHERE id=?", (machine_id,))
+        conn.execute(
+            "DELETE FROM predictions WHERE machine_id=?",
+            (machine_id,)
+        )
+        conn.execute(
+            "DELETE FROM machines WHERE id=?", (machine_id,)
+        )
 
 
 def save_prediction(machine_id, result, risk):
     with connect_db() as conn:
         conn.execute("""
-        INSERT INTO predictions
-        (machine_id, result, risk, created_at)
-        VALUES (?, ?, ?, ?)
+            INSERT INTO predictions
+            (machine_id, result, risk, created_at)
+            VALUES (?, ?, ?, ?)
         """, (
             machine_id, result, risk,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -135,23 +140,23 @@ def save_prediction(machine_id, result, risk):
 setup_database()
 
 
-# ---------------- DEMO DATASET ----------------
+# ---------------- SAMPLE DATA ----------------
 @st.cache_data
 def create_dataset():
     rng = np.random.default_rng(42)
-    count = 500
+    n = 500
 
-    temperature = rng.normal(65, 12, count).clip(25, 110)
-    vibration = rng.normal(3, 1.4, count).clip(0.1, 10)
-    hours = rng.integers(100, 6000, count)
+    temperature = rng.normal(65, 12, n).clip(25, 110)
+    vibration = rng.normal(3, 1.4, n).clip(0.1, 10)
+    hours = rng.integers(100, 6000, n)
 
-    risk_score = (
+    score = (
         (temperature > 82).astype(int)
         + (vibration > 5).astype(int)
         + (hours > 4200).astype(int)
     )
 
-    probability = np.clip(0.05 + risk_score * 0.25, 0.02, 0.95)
+    probability = np.clip(0.05 + score * 0.25, 0.02, 0.95)
     failure = rng.binomial(1, probability)
 
     return pd.DataFrame({
@@ -170,7 +175,10 @@ def train_model():
     y = df["failure"]
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
     )
 
     model = RandomForestClassifier(
@@ -180,8 +188,8 @@ def train_model():
     )
 
     model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
-    accuracy = accuracy_score(y_test, predictions)
+    predicted = model.predict(X_test)
+    accuracy = accuracy_score(y_test, predicted)
 
     return model, df, accuracy
 
@@ -195,11 +203,15 @@ st.sidebar.caption("AI-based machine monitoring")
 
 page = st.sidebar.radio(
     "Select Section",
-    ["Dashboard", "Machine Management", "Prediction & Analysis"]
+    [
+        "Dashboard",
+        "Machine Management",
+        "Prediction & Analysis"
+    ]
 )
 
 st.sidebar.divider()
-st.sidebar.caption("Python • Streamlit • SQLite • Random Forest")
+st.sidebar.caption("Python | Streamlit | SQLite | Random Forest")
 
 
 # ==================================================
@@ -208,7 +220,9 @@ st.sidebar.caption("Python • Streamlit • SQLite • Random Forest")
 if page == "Dashboard":
 
     st.title("AI-Based Predictive Maintenance System")
-    st.write("Monitor machine health and estimate failure risk.")
+    st.write(
+        "Monitor machine health and estimate maintenance risk."
+    )
 
     machines = get_machines()
 
@@ -236,23 +250,28 @@ if page == "Dashboard":
     st.subheader("Machine Overview")
 
     if not machines.empty:
-        st.dataframe(machines, use_container_width=True,
-                     hide_index=True)
+        st.dataframe(
+            machines,
+            use_container_width=True,
+            hide_index=True
+        )
 
         fig, ax = plt.subplots()
         machines["status"].value_counts().plot(
             kind="bar", ax=ax
         )
-        ax.set_ylabel("Number of Machines")
         ax.set_title("Machine Status")
+        ax.set_ylabel("Number of Machines")
         st.pyplot(fig)
         plt.close(fig)
     else:
-        st.info("No machines added yet. Open Machine Management.")
+        st.info(
+            "No machines added. Open Machine Management to add one."
+        )
 
-    st.subheader("Training Dataset")
-    st.write(f"Dataset records: {len(dataset)}")
-    st.write(f"Random Forest model accuracy: {accuracy:.2%}")
+    st.subheader("Model Summary")
+    st.write(f"Training dataset records: {len(dataset)}")
+    st.write(f"Test accuracy: {accuracy:.2%}")
 
     st.download_button(
         "Download Machine Data CSV",
@@ -277,9 +296,10 @@ elif page == "Machine Management":
         "Delete Machine"
     ])
 
-    # ADD
+    # ADD MACHINE
     with add_tab:
         with st.form("add_form"):
+
             name = st.text_input("Machine Name")
 
             machine_type = st.selectbox(
@@ -314,15 +334,21 @@ elif page == "Machine Management":
                 else:
                     try:
                         add_machine(
-                            name.strip(), machine_type, location.strip(),
-                            temperature, vibration, hours_used, status
+                            name.strip(),
+                            machine_type,
+                            location.strip(),
+                            temperature,
+                            vibration,
+                            hours_used,
+                            status
                         )
                         st.success("Machine added successfully.")
                         st.rerun()
+
                     except sqlite3.Error as error:
                         st.error(f"Database error: {error}")
 
-    # VIEW
+    # VIEW MACHINES
     with view_tab:
         machines = get_machines()
 
@@ -342,54 +368,70 @@ elif page == "Machine Management":
                 mime="text/csv"
             )
 
-    # UPDATE
+    # UPDATE MACHINE
     with update_tab:
         machines = get_machines()
 
         if machines.empty:
             st.info("Add a machine before updating.")
-        else:
-            machine_ids = machines["id"].tolist()
 
+        else:
             machine_id = st.selectbox(
                 "Select Machine ID",
-                machine_ids,
+                machines["id"].tolist(),
                 key="update_id"
             )
 
-            row = machines[machines["id"] == machine_id].iloc[0]
+            row = machines[
+                machines["id"] == machine_id
+            ].iloc[0]
 
             with st.form("update_form"):
+
                 new_name = st.text_input(
-                    "Machine Name", value=str(row["name"])
+                    "Machine Name",
+                    value=str(row["name"])
                 )
 
                 types = [
                     "Motor", "Pump", "Fan", "Compressor", "Other"
                 ]
                 old_type = str(row["machine_type"])
-                type_index = types.index(old_type) if old_type in types else 0
+                type_index = (
+                    types.index(old_type) if old_type in types else 0
+                )
 
                 new_type = st.selectbox(
-                    "Machine Type", types, index=type_index
+                    "Machine Type",
+                    types,
+                    index=type_index
                 )
 
                 new_location = st.text_input(
-                    "Location", value=str(row["location"] or "")
+                    "Location",
+                    value=str(row["location"] or "")
                 )
 
                 c1, c2, c3 = st.columns(3)
 
                 new_temp = c1.number_input(
-                    "Temperature", min_value=0.0, max_value=200.0,
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=200.0,
                     value=float(row["temperature"])
                 )
+
                 new_vib = c2.number_input(
-                    "Vibration", min_value=0.0, max_value=20.0,
+                    "Vibration",
+                    min_value=0.0,
+                    max_value=20.0,
                     value=float(row["vibration"])
                 )
+
                 new_hours = c3.number_input(
-                    "Hours Used", min_value=0.0, max_value=200000.0,
+                    "Hours Used",
+                    min_value=0.0,
+                    max_value=200000.0,
                     value=float(row["hours_used"])
                 )
 
@@ -397,10 +439,15 @@ elif page == "Machine Management":
                     "Active", "Needs Check", "Under Maintenance"
                 ]
                 old_status = str(row["status"])
-                status_index = statuses.index(old_status) if old_status in statuses else 0
+                status_index = (
+                    statuses.index(old_status)
+                    if old_status in statuses else 0
+                )
 
                 new_status = st.selectbox(
-                    "Status", statuses, index=status_index
+                    "Status",
+                    statuses,
+                    index=status_index
                 )
 
                 update_clicked = st.form_submit_button("Save Changes")
@@ -411,35 +458,42 @@ elif page == "Machine Management":
                     else:
                         try:
                             update_machine(
-                                machine_id, new_name.strip(), new_type,
-                                new_location.strip(), new_temp, new_vib,
-                                new_hours, new_status
+                                machine_id,
+                                new_name.strip(),
+                                new_type,
+                                new_location.strip(),
+                                new_temp,
+                                new_vib,
+                                new_hours,
+                                new_status
                             )
+
                             st.success("Machine updated successfully.")
                             st.rerun()
+
                         except sqlite3.Error as error:
                             st.error(f"Database error: {error}")
 
-    # DELETE
+    # DELETE MACHINE
     with delete_tab:
         machines = get_machines()
 
         if machines.empty:
             st.info("No machines available to delete.")
-        else:
-            machine_ids = machines["id"].tolist()
 
-            delete_id = st.selectbox(
+        else:
+            machine_id = st.selectbox(
                 "Select Machine ID",
-                machine_ids,
+                machines["id"].tolist(),
                 key="delete_id"
             )
 
-            selected_row = machines[
-                machines["id"] == delete_id
+            row = machines[
+                machines["id"] == machine_id
             ].iloc[0]
 
-            st.write(f"Selected machine: **{selected_row['name']}**")
+            st.write(f"Selected machine: **{row['name']}**")
+
             confirm = st.checkbox(
                 "I confirm that I want to delete this machine."
             )
@@ -447,9 +501,10 @@ elif page == "Machine Management":
             if st.button("Delete Selected Machine"):
                 if confirm:
                     try:
-                        delete_machine(delete_id)
+                        delete_machine(machine_id)
                         st.success("Machine deleted successfully.")
                         st.rerun()
+
                     except sqlite3.Error as error:
                         st.error(f"Database error: {error}")
                 else:
@@ -462,23 +517,19 @@ elif page == "Machine Management":
 else:
 
     st.title("Prediction & Analysis")
-    st.write("Enter machine sensor values to estimate failure risk.")
+    st.write(
+        "Enter machine sensor values to estimate failure risk."
+    )
 
     machines = get_machines()
 
-    machine_options = {"Manual Input": None}
+    options = {"Manual Input": None}
 
     for _, row in machines.iterrows():
-        machine_options[
-            f"{row['id']} - {row['name']}"
-        ] = int(row["id"])
+        options[f"{row['id']} - {row['name']}"] = int(row["id"])
 
-    selected_machine = st.selectbox(
-        "Select Machine",
-        list(machine_options.keys())
-    )
-
-    machine_id = machine_options[selected_machine]
+    selected = st.selectbox("Select Machine", list(options.keys()))
+    machine_id = options[selected]
     selected_row = None
 
     if machine_id is not None:
@@ -500,6 +551,7 @@ else:
     )
 
     with st.form("prediction_form"):
+
         c1, c2, c3 = st.columns(3)
 
         input_temp = c1.number_input(
@@ -524,21 +576,23 @@ else:
                 "hours_used": input_hours
             }])
 
-            risk = float(model.predict_proba(features)[0][1] * 100)
+            risk = float(
+                model.predict_proba(features)[0][1] * 100
+            )
 
             result = "High Risk" if risk >= 50 else "Low Risk"
 
             st.subheader("Prediction Result")
 
-            col1, col2 = st.columns(2)
-            col1.metric("Estimated Failure Risk", f"{risk:.1f}%")
-            col2.metric("Prediction", result)
+            c1, c2 = st.columns(2)
+            c1.metric("Estimated Failure Risk", f"{risk:.1f}%")
+            c2.metric("Prediction", result)
 
             st.progress(min(int(risk), 100))
 
             if risk >= 50:
                 st.warning(
-                    "Higher estimated risk. Consider checking the machine."
+                    "Higher estimated risk. Consider inspecting the machine."
                 )
             else:
                 st.success(
@@ -547,7 +601,7 @@ else:
 
             if machine_id is not None:
                 save_prediction(machine_id, result, risk)
-                st.caption("Prediction saved in the database.")
+                st.caption("Prediction saved to the database.")
 
         except Exception as error:
             st.error(f"Prediction error: {error}")
@@ -560,9 +614,12 @@ else:
     c2.metric("Failure Cases", int(dataset["failure"].sum()))
     c3.metric("Model Accuracy", f"{accuracy:.2%}")
 
-    st.subheader("Sensor Data Preview")
-    st.dataframe(dataset.head(10), use_container_width=True,
-                 hide_index=True)
+    st.subheader("Data Preview")
+    st.dataframe(
+        dataset.head(10),
+        use_container_width=True,
+        hide_index=True
+    )
 
     st.subheader("Data Visualization")
 
@@ -578,15 +635,12 @@ else:
         plt.close(fig)
 
     with chart2:
-        fig, ax = plt.subplots()
-        dataset["failure"].value_counts().sort_index().plot(
-            kind="bar", ax=ax
-        )
-        ax.set_title("Failure vs No Failure")
-        ax.set_xlabel("0 = No Failure, 1 = Failure")
-        ax.set_ylabel("Count")
-        st.pyplot(fig)
-        plt.close(fig)
+        dataset["failure"].value_counts().sort_index().plot(kind="bar")
+        plt.title("Failure vs No Failure")
+        plt.xlabel("0 = No Failure, 1 = Failure")
+        plt.ylabel("Count")
+        st.pyplot(plt.gcf())
+        plt.close()
 
     st.subheader("Feature Importance")
 
@@ -595,8 +649,11 @@ else:
         "Importance": model.feature_importances_
     }).sort_values("Importance", ascending=False)
 
-    st.dataframe(importance, use_container_width=True,
-                 hide_index=True)
+    st.dataframe(
+        importance,
+        use_container_width=True,
+        hide_index=True
+    )
 
     fig, ax = plt.subplots()
     ax.barh(
@@ -610,7 +667,6 @@ else:
 
     st.subheader("Statistical Analysis")
 
-    st.write("**Descriptive Statistics**")
     st.dataframe(
         dataset[["temperature", "vibration", "hours_used"]]
         .describe().round(2),
@@ -625,8 +681,11 @@ else:
     ]
 
     if len(normal_temp) >= 2 and len(failure_temp) >= 2:
+
         test = stats.ttest_ind(
-            failure_temp, normal_temp, equal_var=False
+            failure_temp,
+            normal_temp,
+            equal_var=False
         )
 
         st.write("**Hypothesis Testing: Temperature**")
@@ -652,11 +711,7 @@ else:
         mime="text/csv"
     )
 
-  st.markdown("""
-<style>
-.stApp {
-    background-color: #F3F8FF;
-    color: #243B53;
-}
-</style>
-""", unsafe_allow_html=True)
+    st.caption(
+        "Educational demo using generated sample data. "
+        "Predictions are not certified industrial safety advice."
+    )
