@@ -652,10 +652,11 @@ else:
         mime="text/csv"
     )
 
-    st.caption(
-        "Note: This demo uses generated sample data unless a compatible "
-        "dataset is provided. Its predictions are for learning only, "
-        "not for real industrial safety decisions."
-    )
-'''
-print(code)
+  st.markdown("""
+<style>
+.stApp {
+    background-color: #F3F8FF;
+    color: #243B53;
+}
+</style>
+""", unsafe_allow_html=True)
