@@ -1,8 +1,6 @@
 streamlit
 pandas
 numpy
+matplotlib
 scipy
 scikit-learn
-matplotlib
-requests
-beautifulsoup4
