@@ -28,19 +28,55 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp {
-    background-color: #F1F7FC;
+    background-color: #F3F7FC;
+    color: #1F2937;
 }
+
 [data-testid="stSidebar"] {
-    background-color: #DCEBFA;
+    background-color: #E2ECF8;
 }
-h1, h2, h3 {
-    color: #174A78;
+
+[data-testid="stSidebar"] * {
+    color: #17365D !important;
 }
-div[data-testid="stMetric"] {
-    background: white;
-    border: 1px solid #D4E3F1;
-    padding: 16px;
+
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp p,
+.stApp label,
+.stApp li {
+    color: #1F2937;
+}
+
+[data-testid="stHeader"] {
+    background-color: #F3F7FC;
+}
+
+[data-testid="stMetric"] {
+    background-color: #FFFFFF;
+    border: 1px solid #D8E3F0;
+    padding: 18px;
     border-radius: 12px;
+}
+
+.stButton > button {
+    background-color: #2563EB;
+    color: #FFFFFF !important;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 18px;
+}
+
+.stButton > button:hover {
+    background-color: #1D4ED8;
+    color: #FFFFFF !important;
+}
+
+input, textarea {
+    background-color: #FFFFFF !important;
+    color: #1F2937 !important;
 }
 </style>
 """, unsafe_allow_html=True)
