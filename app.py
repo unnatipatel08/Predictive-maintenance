@@ -1,158 +1,26 @@
-
 import os
 import sqlite3
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
-from database import (
-    initialize_database,
-    get_machines,
-    delete_machine,
-    save_maintenance,
-    get_maintenance,
-    import_csv_data,
-)
-
-from machine_learning import (
-    train_model,
-    predict_risk,
-    get_feature_importance,
-)
-
-from graph_analysis import (
-    machine_status_chart,
-    temperature_chart,
-    feature_correlation,
-    statistical_summary,
-    temperature_hypothesis_test,
-)
+from scipy.stats import ttest_ind
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
 
 
-# ==========================================================
-# PAGE CONFIGURATION
-# ==========================================================
+# =========================================================
+# 1. PAGE CONFIGURATION
+# =========================================================
 
 st.set_page_config(
     page_title="AI Predictive Maintenance",
     page_icon="⚙️",
     layout="wide",
 )
-
-
-# ==========================================================
-# PROFESSIONAL LIGHT BLUE THEME
-# ==========================================================
-
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background-color: #F3F7FC;
-        color: #1F2937;
-    }
-
-    .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
-        color: #17365D !important;
-        font-weight: 700;
-    }
-
-    .stApp p, .stApp label, .stApp li {
-        color: #263548;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #E2ECF8;
-        border-right: 1px solid #D1DFEF;
-    }
-
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3,
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] span {
-        color: #17365D !important;
-    }
-
-    [data-testid="stHeader"] {
-        background-color: #F3F7FC;
-    }
-
-    [data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border: 1px solid #D5E2F0;
-        padding: 18px;
-        border-radius: 14px;
-        box-shadow: 0 2px 8px rgba(23, 54, 93, 0.05);
-    }
-
-    [data-testid="stMetricLabel"] p {
-        color: #52657A !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        color: #1D4ED8 !important;
-    }
-
-    .stButton > button,
-    [data-testid="stFormSubmitButton"] > button {
-        background-color: #2563EB;
-        color: #FFFFFF !important;
-        border: 1px solid #2563EB;
-        border-radius: 9px;
-        font-weight: 600;
-    }
-
-    .stButton > button:hover,
-    [data-testid="stFormSubmitButton"] > button:hover {
-        background-color: #1D4ED8;
-        color: #FFFFFF !important;
-    }
-
-    input, textarea {
-        background-color: #FFFFFF !important;
-        color: #1F2937 !important;
-    }
-
-    [data-baseweb="select"] > div {
-        background-color: #FFFFFF;
-    }
-
-    [data-testid="stDataFrame"],
-    [data-testid="stTable"] {
-        border: 1px solid #D5E2F0;
-        border-radius: 10px;
-    }
-
-    [data-testid="stExpander"] {
-        background-color: #FFFFFF;
-        border: 1px solid #D5E2F0;
-        border-radius: 10px;
-    }
-
-    [data-testid="stDownloadButton"] button {
-        background-color: #FFFFFF;
-        color: #1D4ED8 !important;
-        border: 1px solid #93B4E8;
-        border-radius: 9px;
-        font-weight: 600;
-    }
-
-    [data-testid="stDownloadButton"] button:hover {
-        background-color: #EAF2FF;
-        color: #1D4ED8 !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ==========================================================
-# CONSTANTS
-# ==========================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "ai4i2020.csv")
@@ -165,24 +33,93 @@ FEATURES = [
     "tool_wear",
 ]
 
-REQUIRED_COLUMNS = [
-    "machine_id",
-    "temperature",
-    "rotational_speed",
-    "torque",
-    "tool_wear",
-    "failure",
-]
+CSV_COLUMNS = {
+    "UDI": "machine_id",
+    "Product ID": "product_id",
+    "Type": "machine_type",
+    "Air temperature [K]": "temperature",
+    "Process temperature [K]": "process_temperature",
+    "Rotational speed [rpm]": "rotational_speed",
+    "Torque [Nm]": "torque",
+    "Tool wear [min]": "tool_wear",
+    "Machine failure": "failure",
+}
 
 
-# ==========================================================
-# DELETE HISTORY
-# Remember deleted machines so they are not automatically
-# imported again during ordinary app reruns.
-# ==========================================================
+# =========================================================
+# 2. LIGHT BLUE THEME
+# =========================================================
 
-def initialize_deleted_table():
-    with sqlite3.connect(DB_PATH) as conn:
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #F3F7FC;
+        color: #1F2937;
+    }
+
+    h1, h2, h3, h4 {
+        color: #17365D !important;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #E2ECF8;
+    }
+
+    [data-testid="stSidebar"] * {
+        color: #17365D;
+    }
+
+    [data-testid="stHeader"] {
+        background-color: #F3F7FC;
+    }
+
+    [data-testid="stMetric"] {
+        background: #FFFFFF;
+        border: 1px solid #D5E2F0;
+        padding: 16px;
+        border-radius: 12px;
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #1D4ED8;
+    }
+
+    .stButton > button,
+    [data-testid="stFormSubmitButton"] > button {
+        background: #2563EB;
+        color: white !important;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+    }
+
+    .stButton > button:hover,
+    [data-testid="stFormSubmitButton"] > button:hover {
+        background: #1D4ED8;
+        color: white !important;
+    }
+
+    input, textarea {
+        background: white !important;
+        color: #1F2937 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =========================================================
+# 3. DATABASE FOR DELETED IDS AND MAINTENANCE HISTORY
+# =========================================================
+
+def db_connect():
+    return sqlite3.connect(DB_PATH, timeout=30)
+
+
+def initialize_database():
+    with db_connect() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS deleted_machine_ids (
@@ -191,11 +128,23 @@ def initialize_deleted_table():
             """
         )
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS maintenance_logs (
+                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                machine_id TEXT NOT NULL,
+                product_id TEXT,
+                maintenance_date TEXT,
+                maintenance_type TEXT,
+                notes TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
 
 def get_deleted_ids():
-    initialize_deleted_table()
-
-    with sqlite3.connect(DB_PATH) as conn:
+    with db_connect() as conn:
         rows = conn.execute(
             "SELECT machine_id FROM deleted_machine_ids"
         ).fetchall()
@@ -203,10 +152,8 @@ def get_deleted_ids():
     return {str(row[0]) for row in rows}
 
 
-def remember_deleted_id(machine_id):
-    initialize_deleted_table()
-
-    with sqlite3.connect(DB_PATH) as conn:
+def delete_machine_id(machine_id):
+    with db_connect() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO deleted_machine_ids (machine_id)
@@ -216,252 +163,366 @@ def remember_deleted_id(machine_id):
         )
 
 
-# ==========================================================
-# LOAD THE ORIGINAL CSV
-# The displayed original dataset is never renamed or edited.
-# A separate copy is prepared for analysis and prediction.
-# ==========================================================
+def restore_machine_id(machine_id):
+    with db_connect() as conn:
+        conn.execute(
+            "DELETE FROM deleted_machine_ids WHERE machine_id = ?",
+            (str(machine_id),),
+        )
 
-def prepare_dataset(original_data):
-    renamed = original_data.rename(
-        columns={
-            "UDI": "machine_id",
-            "Air temperature [K]": "temperature",
-            "Rotational speed [rpm]": "rotational_speed",
-            "Torque [Nm]": "torque",
-            "Tool wear [min]": "tool_wear",
-            "Machine failure": "failure",
-        }
+
+def save_maintenance_record(
+    machine_id,
+    product_id,
+    maintenance_date,
+    maintenance_type,
+    notes,
+):
+    with db_connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO maintenance_logs
+            (
+                machine_id,
+                product_id,
+                maintenance_date,
+                maintenance_type,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(machine_id),
+                str(product_id),
+                str(maintenance_date),
+                str(maintenance_type),
+                str(notes),
+            ),
+        )
+
+
+def load_maintenance_history():
+    with db_connect() as conn:
+        return pd.read_sql_query(
+            """
+            SELECT
+                log_id,
+                machine_id,
+                product_id,
+                maintenance_date,
+                maintenance_type,
+                notes,
+                created_at
+            FROM maintenance_logs
+            ORDER BY log_id DESC
+            """,
+            conn,
+        )
+
+
+initialize_database()
+
+
+# =========================================================
+# 4. LOAD ORIGINAL CSV WITHOUT CHANGING ITS COLUMNS
+# =========================================================
+
+@st.cache_data
+def load_original_csv(path, modified_time):
+    return pd.read_csv(path)
+
+
+if not os.path.isfile(CSV_PATH):
+    st.error(
+        "ai4i2020.csv not found. Place it in the same "
+        "GitHub repository folder as app.py."
     )
+    st.stop()
 
-    missing = [
-        column
-        for column in REQUIRED_COLUMNS
-        if column not in renamed.columns
+
+try:
+    original_data = load_original_csv(
+        CSV_PATH,
+        os.path.getmtime(CSV_PATH),
+    )
+except Exception as error:
+    st.error(f"Could not read the CSV file: {error}")
+    st.stop()
+
+
+def prepare_data(raw):
+    """Make a separate working copy for prediction and analysis."""
+
+    data = raw.rename(columns=CSV_COLUMNS).copy()
+
+    required = [
+        "machine_id",
+        "product_id",
+        "machine_type",
+        "temperature",
+        "process_temperature",
+        "rotational_speed",
+        "torque",
+        "tool_wear",
+        "failure",
     ]
+
+    missing = [col for col in required if col not in data.columns]
 
     if missing:
         raise ValueError(
-            "Required dataset columns are missing: "
+            "Missing required original CSV columns: "
             + ", ".join(missing)
         )
 
-    cleaned = renamed[REQUIRED_COLUMNS].copy()
+    data["machine_id"] = data["machine_id"].astype(str)
+    data["product_id"] = data["product_id"].astype(str)
+    data["machine_type"] = data["machine_type"].astype(str)
 
-    cleaned["machine_id"] = (
-        cleaned["machine_id"].astype(str)
-    )
+    numeric_columns = [
+        "temperature",
+        "process_temperature",
+        "rotational_speed",
+        "torque",
+        "tool_wear",
+        "failure",
+    ]
 
-    for column in FEATURES + ["failure"]:
-        cleaned[column] = pd.to_numeric(
-            cleaned[column],
+    for column in numeric_columns:
+        data[column] = pd.to_numeric(
+            data[column],
             errors="coerce",
         )
 
-    cleaned = cleaned.dropna(
-        subset=REQUIRED_COLUMNS
-    )
+    return data
 
-    cleaned["failure"] = cleaned["failure"].astype(int)
 
-    cleaned = cleaned[
-        cleaned["failure"].isin([0, 1])
+try:
+    dataset = prepare_data(original_data)
+except Exception as error:
+    st.error(str(error))
+    st.stop()
+
+
+# =========================================================
+# 5. MACHINE LIST AND DROPDOWN LABELS
+# =========================================================
+
+deleted_ids = get_deleted_ids()
+
+available_data = dataset[
+    ~dataset["machine_id"].isin(deleted_ids)
+].copy()
+
+available_data = available_data.sort_values(
+    by="machine_id",
+    key=lambda column: pd.to_numeric(
+        column,
+        errors="coerce",
+    ),
+    na_position="last",
+).reset_index(drop=True)
+
+
+def get_machine_label(machine_id):
+    rows = available_data[
+        available_data["machine_id"].astype(str)
+        == str(machine_id)
     ]
 
-    return cleaned
+    if rows.empty:
+        return str(machine_id)
 
+    row = rows.iloc[0]
 
-def load_original_csv():
-    if not os.path.isfile(CSV_PATH):
-        st.sidebar.error(
-            "ai4i2020.csv was not found. "
-            "Place it beside app.py in your GitHub repository."
-        )
-        return None
-
-    try:
-        # Keep original headers and columns for Dashboard.
-        return pd.read_csv(CSV_PATH)
-
-    except Exception as error:
-        st.sidebar.error(
-            f"Could not read ai4i2020.csv: {error}"
-        )
-        return None
-
-
-# ==========================================================
-# IMPORT CSV DATA INTO THE DATABASE
-# ==========================================================
-
-def sync_database_with_csv(original_data):
-    cleaned = prepare_dataset(original_data)
-
-    deleted_ids = get_deleted_ids()
-    csv_ids = set(cleaned["machine_id"])
-
-    current_data = get_machines()
-
-    # Remove outdated records that are not present in the
-    # current source dataset, and records already deleted.
-    if not current_data.empty:
-        for machine_id in current_data["machine_id"].astype(str):
-            if (
-                machine_id not in csv_ids
-                or machine_id in deleted_ids
-            ):
-                delete_machine(machine_id)
-
-    current_data = get_machines()
-
-    current_ids = (
-        set(current_data["machine_id"].astype(str))
-        if not current_data.empty
-        else set()
+    return (
+        f"UDI {row['machine_id']} | "
+        f"Product {row['product_id']} | "
+        f"Type {row['machine_type']}"
     )
 
-    rows_to_import = cleaned[
-        ~cleaned["machine_id"].isin(current_ids)
-        & ~cleaned["machine_id"].isin(deleted_ids)
+
+def get_machine(machine_id):
+    rows = available_data[
+        available_data["machine_id"].astype(str)
+        == str(machine_id)
     ]
 
-    if not rows_to_import.empty:
-        import_csv_data(rows_to_import)
-
-
-# Initialize database and original CSV.
-initialize_database()
-initialize_deleted_table()
-
-original_csv = load_original_csv()
-
-# Sync once per browser session. Ordinary reruns will not
-# automatically restore machines deleted in that session.
-if (
-    original_csv is not None
-    and "dataset_synced" not in st.session_state
-):
-    try:
-        sync_database_with_csv(original_csv)
-        st.session_state["dataset_synced"] = True
-
-    except Exception as error:
-        st.sidebar.error(
-            f"Database import failed: {error}"
-        )
-
-
-# ==========================================================
-# HELPER FUNCTIONS
-# ==========================================================
-
-def get_analysis_data():
-    """Return the original CSV as normalized analysis data."""
-    if original_csv is None:
-        return pd.DataFrame(columns=REQUIRED_COLUMNS)
-
-    return prepare_dataset(original_csv)
-
-
-def get_model():
-    """Train the Random Forest model on operational records."""
-    data = get_machines()
-
-    if data.empty:
-        raise ValueError(
-            "No machine records found. Check ai4i2020.csv."
-        )
-
-    return train_model(data.copy())
-
-
-def get_machine_by_id(machine_id):
-    """Return one machine record from the operational database."""
-    data = get_machines()
-
-    if data.empty:
+    if rows.empty:
         return None
 
-    match = data[
-        data["machine_id"].astype(str) == str(machine_id)
-    ]
-
-    if match.empty:
-        return None
-
-    return match.iloc[0]
+    return rows.iloc[0]
 
 
-def parse_optional_number(text, original_value, field_name):
-    """
-    Empty input uses the selected machine's CSV value.
-    A provided input is converted into a numeric value.
-    """
-    if not text or not text.strip():
-        return float(original_value)
-
-    try:
-        value = float(text.strip())
-
-    except ValueError as error:
-        raise ValueError(
-            f"{field_name} must be a valid number."
-        ) from error
-
-    if not pd.notna(value):
-        raise ValueError(
-            f"{field_name} must be a valid number."
-        )
-
-    return value
+machine_ids = available_data["machine_id"].tolist()
 
 
-def show_prediction_result(model, readings):
-    """Display risk, a threshold-based result, and advice."""
-    result = predict_risk(model, readings)
+# =========================================================
+# 6. RANDOM FOREST MACHINE LEARNING MODEL
+# =========================================================
 
-    risk = float(result["risk"])
+@st.cache_resource
+def train_failure_model(path, modified_time):
+    raw = pd.read_csv(path)
+    data = prepare_data(raw)
 
-    metric_col, status_col = st.columns(2)
-
-    metric_col.metric(
-        "Estimated Failure Risk",
-        f"{risk:.2f}%",
+    model_data = data.dropna(
+        subset=FEATURES + ["failure"]
     )
+
+    if model_data.empty:
+        raise ValueError(
+            "The CSV has no valid training records."
+        )
+
+    X = model_data[FEATURES]
+    y = model_data["failure"].astype(int)
+
+    if y.nunique() < 2:
+        raise ValueError(
+            "The training data must contain both failure "
+            "and no-failure records."
+        )
+
+    model = Pipeline(
+        steps=[
+            (
+                "imputer",
+                SimpleImputer(strategy="median"),
+            ),
+            (
+                "classifier",
+                RandomForestClassifier(
+                    n_estimators=120,
+                    random_state=42,
+                    class_weight="balanced_subsample",
+                    min_samples_leaf=2,
+                    n_jobs=-1,
+                ),
+            ),
+        ]
+    )
+
+    model.fit(X, y)
+
+    return model
+
+
+def predict_failure(readings):
+    model = train_failure_model(
+        CSV_PATH,
+        os.path.getmtime(CSV_PATH),
+    )
+
+    X = pd.DataFrame(
+        [
+            {
+                feature: readings[feature]
+                for feature in FEATURES
+            }
+        ]
+    )
+
+    probabilities = model.predict_proba(X)[0]
+
+    classes = model.named_steps["classifier"].classes_
+
+    failure_index = list(classes).index(1)
+    risk = float(probabilities[failure_index] * 100)
+
+    # Health alert categories
+    if risk >= 50:
+        level = "High Risk"
+        color = "red"
+
+    elif risk >= 20:
+        level = "Medium Risk"
+        color = "yellow"
+
+    else:
+        level = "Low Risk"
+        color = "green"
+
+    return {
+        "risk": risk,
+        "level": level,
+        "color": color,
+        "prediction": (
+            "Failure predicted"
+            if risk >= 50
+            else "Failure not predicted"
+        ),
+    }
+
+
+# =========================================================
+# 7. SMART MAINTENANCE RECOMMENDATIONS
+# =========================================================
+
+def get_recommendations(readings, risk):
+    recommendations = []
+
+    temp_limit = dataset["temperature"].quantile(0.95)
+    speed_low = dataset["rotational_speed"].quantile(0.05)
+    speed_high = dataset["rotational_speed"].quantile(0.95)
+    torque_limit = dataset["torque"].quantile(0.95)
+    wear_limit = dataset["tool_wear"].quantile(0.90)
 
     if risk >= 50:
-        status_col.error(
-            "Model result: Failure predicted"
+        recommendations.append(
+            "HIGH RISK: Arrange a qualified machine inspection "
+            "as soon as practical."
         )
+
+    elif risk >= 20:
+        recommendations.append(
+            "MEDIUM RISK: Plan a maintenance inspection "
+            "and continue monitoring the sensor readings."
+        )
+
     else:
-        status_col.success(
-            "Model result: Failure not predicted"
+        recommendations.append(
+            "LOW RISK: Continue routine inspection and "
+            "regular monitoring."
         )
 
-    st.write(
-        f"**Risk category:** {result['level']}"
-    )
+    if readings["temperature"] > temp_limit:
+        recommendations.append(
+            "Temperature is unusually high compared with "
+            "this dataset. Inspect the cooling system and "
+            "verify the temperature sensor."
+        )
 
-    st.info(result["recommendation"])
+    if (
+        readings["rotational_speed"] < speed_low
+        or readings["rotational_speed"] > speed_high
+    ):
+        recommendations.append(
+            "Rotational speed is outside the usual dataset range. "
+            "Check the operating conditions and RPM sensor."
+        )
 
-    st.caption(
-        "The failure/no-failure label uses a 50% estimated-risk "
-        "threshold. This is a model estimate, not a guarantee "
-        "of actual equipment behaviour."
-    )
+    if readings["torque"] > torque_limit:
+        recommendations.append(
+            "Torque is unusually high compared with this dataset. "
+            "Check machine load and tooling."
+        )
 
-    return result
+    if readings["tool_wear"] > wear_limit:
+        recommendations.append(
+            "Tool wear is high compared with this dataset. "
+            "Inspect the tool and consider scheduled replacement."
+        )
+
+    return recommendations
 
 
-# ==========================================================
-# SIDEBAR NAVIGATION
-# ==========================================================
+# =========================================================
+# 8. SIDEBAR NAVIGATION
+# =========================================================
 
 st.sidebar.title("⚙️ Predictive Maintenance")
-
-st.sidebar.caption(
-    "AI-Based Industrial Equipment Monitoring"
-)
+st.sidebar.caption("AI-Based Industrial Equipment Monitoring")
 
 page = st.sidebar.radio(
     "Navigation",
@@ -474,283 +535,287 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.divider()
-
-st.sidebar.caption(
-    "Educational demonstration project"
-)
+st.sidebar.caption("Educational demonstration project")
 
 
-# ==========================================================
-# PAGE 1: DASHBOARD
-# Show all columns from original ai4i2020.csv.
-# ==========================================================
+# =========================================================
+# 9. PAGE: DASHBOARD
+# Show ALL original CSV records and original columns.
+# =========================================================
 
 if page == "Dashboard":
 
     st.title("Industrial Machine Dashboard")
 
     st.write(
-        "Explore the original AI4I dataset and machine failure records."
+        "View the original AI4I dataset and its recorded failures."
     )
 
-    if original_csv is None:
-        st.warning(
-            "The original dataset could not be loaded. "
-            "Check ai4i2020.csv in your GitHub repository."
+    total = len(original_data)
+
+    if "Machine failure" in original_data.columns:
+
+        failure_count = int(
+            (
+                pd.to_numeric(
+                    original_data["Machine failure"],
+                    errors="coerce",
+                ) == 1
+            ).sum()
         )
 
     else:
-        try:
-            analysis_data = prepare_dataset(original_csv)
+        failure_count = 0
 
-            total_records = len(original_csv)
+    healthy_count = total - failure_count
 
-            failed_records = int(
-                (
-                    analysis_data["failure"] == 1
-                ).sum()
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric("Total CSV Records", f"{total:,}")
+    c2.metric("Recorded Failures", f"{failure_count:,}")
+    c3.metric("No Recorded Failure", f"{healthy_count:,}")
+
+    st.subheader("Original Dataset — ai4i2020.csv")
+
+    search = st.text_input(
+        "Search in original dataset",
+        placeholder="Search UDI, Product ID, Type, or any value",
+    )
+
+    if search.strip():
+
+        mask = original_data.astype(str).apply(
+            lambda column: column.str.contains(
+                search.strip(),
+                case=False,
+                regex=False,
+                na=False,
             )
+        ).any(axis=1)
 
-            no_failure_records = (
-                len(analysis_data) - failed_records
-            )
+        displayed_data = original_data.loc[mask]
 
-            c1, c2, c3 = st.columns(3)
+    else:
+        displayed_data = original_data
 
-            c1.metric(
-                "Total CSV Records",
-                f"{total_records:,}",
-            )
+    st.caption(
+        f"Showing {len(displayed_data):,} of {total:,} rows. "
+        "All original CSV columns are retained."
+    )
 
-            c2.metric(
-                "Recorded Failures",
-                f"{failed_records:,}",
-            )
+    st.dataframe(
+        displayed_data,
+        use_container_width=True,
+        hide_index=True,
+    )
 
-            c3.metric(
-                "No Recorded Failure",
-                f"{no_failure_records:,}",
-            )
+    st.download_button(
+        "Download Original CSV",
+        original_data.to_csv(index=False).encode("utf-8"),
+        file_name="ai4i2020.csv",
+        mime="text/csv",
+    )
 
-        except Exception as error:
-            st.warning(
-                f"Could not calculate dataset metrics: {error}"
-            )
+    st.divider()
+    st.subheader("Failure Distribution")
 
-        st.subheader("Original Dataset — ai4i2020.csv")
+    fig, ax = plt.subplots(figsize=(7, 4))
 
-        search = st.text_input(
-            "Search original dataset",
-            placeholder="Search ID, Product ID, Type, or any value",
-            key="dashboard_search",
+    status = (
+        original_data["Machine failure"]
+        .value_counts()
+        .reindex([0, 1], fill_value=0)
+    )
+
+    ax.bar(
+        ["No Failure", "Failure"],
+        status.values,
+    )
+
+    ax.set_ylabel("Number of Records")
+    ax.set_title("Recorded Machine Failure Distribution")
+
+    st.pyplot(fig, clear_figure=True)
+    plt.close(fig)
+
+    st.subheader("Temperature Distribution")
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+
+    for failure_value, label in [
+        (0, "No Failure"),
+        (1, "Failure"),
+    ]:
+
+        values = dataset.loc[
+            dataset["failure"] == failure_value,
+            "temperature",
+        ].dropna()
+
+        ax.hist(
+            values,
+            bins=30,
+            alpha=0.6,
+            label=label,
         )
 
-        # Filtering changes the view only, not the source CSV.
-        if search.strip():
-            mask = original_csv.astype(str).apply(
-                lambda column: column.str.contains(
-                    search.strip(),
-                    case=False,
-                    na=False,
-                    regex=False,
-                )
-            ).any(axis=1)
+    ax.set_xlabel("Air Temperature [K]")
+    ax.set_ylabel("Number of Records")
+    ax.legend()
 
-            display_data = original_csv.loc[mask]
-
-        else:
-            display_data = original_csv
-
-        st.caption(
-            f"Showing {len(display_data):,} of "
-            f"{len(original_csv):,} original records. "
-            f"All {len(original_csv.columns)} original columns are retained."
-        )
-
-        st.dataframe(
-            display_data,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        st.download_button(
-            "Download Original CSV",
-            data=original_csv.to_csv(
-                index=False
-            ).encode("utf-8"),
-            file_name="ai4i2020.csv",
-            mime="text/csv",
-        )
-
-        st.divider()
-
-        st.subheader("Dataset Overview")
-
-        try:
-            analysis_data = prepare_dataset(original_csv)
-
-            chart_col1, chart_col2 = st.columns(2)
-
-            with chart_col1:
-                st.pyplot(
-                    machine_status_chart(analysis_data),
-                    clear_figure=True,
-                )
-
-            with chart_col2:
-                st.pyplot(
-                    temperature_chart(analysis_data),
-                    clear_figure=True,
-                )
-
-        except Exception as error:
-            st.warning(
-                f"Could not display dataset charts: {error}"
-            )
+    st.pyplot(fig, clear_figure=True)
+    plt.close(fig)
 
 
-# ==========================================================
-# PAGE 2: MACHINE MANAGEMENT
-# Machine ID deletion only. No default sensor-value form.
-# ==========================================================
+# =========================================================
+# 10. PAGE: MACHINE MANAGEMENT
+# Delete a machine by ID and add maintenance history.
+# No sensor values are manually stored in the CSV.
+# =========================================================
 
 elif page == "Machine Management":
 
     st.title("Machine Management")
 
     st.write(
-        "Delete a machine from the operational database "
-        "using its Machine ID and record maintenance work."
+        "Manage available machine records and record maintenance activity."
     )
 
-    data = get_machines()
-
-    st.subheader("Delete Machine")
-
-    st.caption(
-        "Enter a Machine ID that exists in the dataset."
+    st.info(
+        "Machine sensor readings come from the repository CSV in this "
+        "demo. The original CSV is not edited when a machine is removed "
+        "from the operational list."
     )
 
-    machine_id_to_delete = st.text_input(
-        "Machine ID",
-        placeholder="Enter Machine ID, for example 1",
-        key="machine_delete_id",
-    )
+    st.subheader("Delete Machine Using Machine ID")
 
-    if st.button("Delete Machine", key="delete_machine_button"):
+    if machine_ids:
 
-        requested_id = machine_id_to_delete.strip()
+        id_to_delete = st.selectbox(
+            "Select Machine",
+            machine_ids,
+            format_func=get_machine_label,
+            key="delete_machine_selection",
+        )
 
-        if not requested_id:
-            st.warning("Enter a Machine ID first.")
+        confirmation = st.checkbox(
+            "Confirm that I want to remove this machine "
+            "from the operational list."
+        )
 
-        else:
-            selected_machine = get_machine_by_id(requested_id)
+        if st.button("Delete Selected Machine"):
 
-            if selected_machine is None:
-                st.error(
-                    f"Machine ID {requested_id} was not found "
-                    "in the operational database."
+            if not confirmation:
+                st.warning(
+                    "Please confirm before deleting."
                 )
 
             else:
-                try:
-                    delete_machine(requested_id)
-                    remember_deleted_id(requested_id)
+                delete_machine_id(id_to_delete)
 
-                    st.success(
-                        f"Machine {requested_id} has been removed "
-                        "from the operational database."
-                    )
+                st.success(
+                    f"Machine {id_to_delete} removed from the "
+                    "operational list."
+                )
 
-                    st.info(
-                        "The original ai4i2020.csv file on GitHub "
-                        "is not modified. Its original records "
-                        "remain visible on the Dashboard."
-                    )
+                st.info(
+                    "The original ai4i2020.csv file remains unchanged "
+                    "and continues to appear in the Dashboard."
+                )
 
-                    st.rerun()
-
-                except Exception as error:
-                    st.error(
-                        f"Could not delete the machine: {error}"
-                    )
-
-    st.divider()
-
-    st.subheader("Current Operational Machines")
-
-    data = get_machines()
-
-    if data.empty:
-        st.info(
-            "No operational machines are currently available."
-        )
+                st.rerun()
 
     else:
-        st.caption(
-            f"{len(data):,} machine records currently available "
-            "for prediction and maintenance."
+
+        st.info(
+            "No active machines. Restore machines below or check the CSV."
         )
 
-        st.dataframe(
-            data.head(100),
-            use_container_width=True,
-            hide_index=True,
+    st.subheader("Restore a Removed Machine")
+
+    if deleted_ids:
+
+        restore_id = st.selectbox(
+            "Select machine to restore",
+            sorted(
+                deleted_ids,
+                key=lambda value: (
+                    not value.isdigit(),
+                    int(value) if value.isdigit() else value,
+                ),
+            ),
+            key="restore_machine_selection",
         )
 
-        if len(data) > 100:
-            st.caption(
-                "Showing the first 100 operational records here. "
-                "The full original CSV remains available on Dashboard."
+        if st.button("Restore Selected Machine"):
+            restore_machine_id(restore_id)
+
+            st.success(
+                f"Machine {restore_id} restored."
             )
+
+            st.rerun()
+
+    else:
+
+        st.caption("There are no removed machines to restore.")
 
     st.divider()
+    st.subheader("Add Maintenance Record")
 
-    st.subheader("Record Maintenance")
-
-    maintenance_machine_id = st.text_input(
-        "Maintenance Machine ID",
-        placeholder="Enter an existing Machine ID",
-        key="maintenance_machine_id",
+    st.write(
+        "Select a machine and record its inspection, cleaning, "
+        "repair, or other maintenance work."
     )
 
-    maintenance_date = st.date_input(
-        "Maintenance Date",
-        key="maintenance_date",
-    )
+    if machine_ids:
 
-    maintenance_notes = st.text_area(
-        "Maintenance Notes",
-        placeholder="Describe maintenance, inspection, or service work...",
-        key="maintenance_notes",
-    )
+        maintenance_id = st.selectbox(
+            "Machine for Maintenance",
+            machine_ids,
+            format_func=get_machine_label,
+            key="maintenance_machine_selection",
+        )
 
-    if st.button("Save Maintenance Record"):
+        selected_for_maintenance = get_machine(
+            maintenance_id
+        )
 
-        requested_id = maintenance_machine_id.strip()
+        maintenance_date = st.date_input(
+            "Maintenance Date"
+        )
 
-        if not requested_id:
-            st.warning(
-                "Enter a Machine ID for the maintenance record."
-            )
+        maintenance_type = st.selectbox(
+            "Maintenance Type",
+            [
+                "Inspection",
+                "Cleaning",
+                "Tool Replacement",
+                "Repair",
+                "Calibration",
+                "Other",
+            ],
+        )
 
-        elif get_machine_by_id(requested_id) is None:
-            st.error(
-                "That Machine ID is not in the operational database."
-            )
+        notes = st.text_area(
+            "Maintenance Notes",
+            placeholder="Describe the maintenance performed",
+        )
 
-        elif not maintenance_notes.strip():
-            st.warning(
-                "Enter maintenance notes before saving."
-            )
+        if st.button("Save Maintenance Record"):
 
-        else:
-            try:
-                save_maintenance(
-                    requested_id,
+            if not notes.strip():
+                st.warning(
+                    "Please enter maintenance notes."
+                )
+
+            else:
+                save_maintenance_record(
+                    maintenance_id,
+                    selected_for_maintenance["product_id"],
                     str(maintenance_date),
-                    maintenance_notes.strip(),
+                    maintenance_type,
+                    notes.strip(),
                 )
 
                 st.success(
@@ -759,220 +824,318 @@ elif page == "Machine Management":
 
                 st.rerun()
 
-            except Exception as error:
-                st.error(
-                    f"Could not save the maintenance record: {error}"
-                )
+    else:
+
+        st.info(
+            "There are no available machines for maintenance records."
+        )
 
     st.subheader("Maintenance History")
 
-    history = get_maintenance()
+    history = load_maintenance_history()
 
-    if history is None or history.empty:
+    if history.empty:
+
         st.info(
-            "No maintenance history is available yet."
+            "No maintenance records have been saved yet."
         )
 
     else:
+
         st.dataframe(
             history,
             use_container_width=True,
             hide_index=True,
         )
 
+        st.download_button(
+            "Download Maintenance History",
+            history.to_csv(index=False).encode("utf-8"),
+            file_name="maintenance_history.csv",
+            mime="text/csv",
+        )
 
-# ==========================================================
-# PAGE 3: PREDICTION AND ANALYSIS
+
+# =========================================================
+# 11. PAGE: PREDICTION & ANALYSIS
 # No full CSV table on this page.
-# ==========================================================
+# =========================================================
 
 elif page == "Prediction & Analysis":
 
     st.title("Prediction & Analysis")
 
     st.write(
-        "Predict failure risk for an existing machine or use "
-        "new sensor readings, then review machine-data analysis."
+        "Choose a machine and optionally enter new sensor readings. "
+        "Blank fields use the selected machine's CSV readings."
     )
 
-    data = get_machines()
-
-    if data.empty:
+    if not machine_ids:
 
         st.warning(
-            "No machine records are available for prediction. "
-            "Check ai4i2020.csv or Machine Management."
+            "No available machines. Check the CSV or restore a machine "
+            "from Machine Management."
         )
 
     else:
 
-        st.subheader("Machine Failure Prediction")
-
-        machine_ids = data["machine_id"].astype(str).tolist()
-
         selected_id = st.selectbox(
-            "Select Machine ID",
+            "Select Machine",
             machine_ids,
-            key="prediction_machine_id",
+            format_func=get_machine_label,
+            key="prediction_machine_selection",
         )
 
-        selected_machine = get_machine_by_id(selected_id)
+        selected_machine = get_machine(selected_id)
+
+        st.subheader("Selected Machine's CSV Readings")
+
+        sensor_columns = st.columns(4)
+
+        for index, feature in enumerate(FEATURES):
+
+            with sensor_columns[index]:
+                st.metric(
+                    feature.replace("_", " ").title(),
+                    f"{float(selected_machine[feature]):.2f}",
+                )
 
         st.caption(
-            "Leave any new sensor field empty to use the selected "
-            "machine's existing CSV reading."
+            "These readings are taken from the selected CSV record. "
+            "No manual entry is needed to use this machine's readings."
         )
 
-        with st.expander(
-            "Selected Machine's Current Sensor Readings",
-            expanded=True,
-        ):
+        with st.form("manual_prediction_form"):
 
-            current_cols = st.columns(4)
-
-            for index, feature in enumerate(FEATURES):
-                with current_cols[index]:
-                    st.metric(
-                        feature.replace("_", " ").title(),
-                        f"{float(selected_machine[feature]):.2f}",
-                    )
-
-        with st.form("prediction_form"):
+            st.subheader("Manual Machine Prediction")
 
             st.write(
-                "Optional: enter new readings to test different values."
+                "Enter new readings only to test a different scenario. "
+                "Leave a field empty to use that CSV value."
             )
 
-            p1, p2 = st.columns(2)
+            left, right = st.columns(2)
 
-            with p1:
-                temperature_input = st.text_input(
+            with left:
+
+                temp_input = st.text_input(
                     "Air Temperature [K]",
-                    placeholder="Blank = use selected machine value",
+                    placeholder="Blank = CSV value",
                 )
 
                 speed_input = st.text_input(
                     "Rotational Speed [rpm]",
-                    placeholder="Blank = use selected machine value",
+                    placeholder="Blank = CSV value",
                 )
 
-            with p2:
+            with right:
+
                 torque_input = st.text_input(
                     "Torque [Nm]",
-                    placeholder="Blank = use selected machine value",
+                    placeholder="Blank = CSV value",
                 )
 
                 wear_input = st.text_input(
                     "Tool Wear [min]",
-                    placeholder="Blank = use selected machine value",
+                    placeholder="Blank = CSV value",
                 )
 
-            run_prediction = st.form_submit_button(
-                "Predict Machine Failure Risk"
+            submitted = st.form_submit_button(
+                "Predict Failure Risk"
             )
 
-        if run_prediction:
+        if submitted:
 
             try:
-                readings = {
-                    "temperature": parse_optional_number(
-                        temperature_input,
-                        selected_machine["temperature"],
-                        "Air Temperature",
+
+                sensor_readings = {
+                    "temperature": float(
+                        temp_input.strip()
+                        if temp_input.strip()
+                        else selected_machine["temperature"]
                     ),
-                    "rotational_speed": parse_optional_number(
-                        speed_input,
-                        selected_machine["rotational_speed"],
-                        "Rotational Speed",
+
+                    "rotational_speed": float(
+                        speed_input.strip()
+                        if speed_input.strip()
+                        else selected_machine["rotational_speed"]
                     ),
-                    "torque": parse_optional_number(
-                        torque_input,
-                        selected_machine["torque"],
-                        "Torque",
+
+                    "torque": float(
+                        torque_input.strip()
+                        if torque_input.strip()
+                        else selected_machine["torque"]
                     ),
-                    "tool_wear": parse_optional_number(
-                        wear_input,
-                        selected_machine["tool_wear"],
-                        "Tool Wear",
+
+                    "tool_wear": float(
+                        wear_input.strip()
+                        if wear_input.strip()
+                        else selected_machine["tool_wear"]
                     ),
                 }
 
-                model = get_model()
+                if any(
+                    not np.isfinite(value)
+                    for value in sensor_readings.values()
+                ):
+                    raise ValueError(
+                        "All sensor values must be finite numbers."
+                    )
 
-                st.subheader("Prediction Result")
+                if sensor_readings["rotational_speed"] < 0:
+                    raise ValueError(
+                        "Rotational speed cannot be negative."
+                    )
 
-                show_prediction_result(
-                    model,
-                    readings,
+                if sensor_readings["torque"] < 0:
+                    raise ValueError(
+                        "Torque cannot be negative."
+                    )
+
+                if sensor_readings["tool_wear"] < 0:
+                    raise ValueError(
+                        "Tool wear cannot be negative."
+                    )
+
+                result = predict_failure(sensor_readings)
+
+                st.divider()
+                st.subheader("Machine Health Alert")
+
+                if result["color"] == "red":
+
+                    st.error(
+                        f"🔴 {result['level']} — "
+                        f"{result['risk']:.2f}% estimated risk"
+                    )
+
+                elif result["color"] == "yellow":
+
+                    st.warning(
+                        f"🟡 {result['level']} — "
+                        f"{result['risk']:.2f}% estimated risk"
+                    )
+
+                else:
+
+                    st.success(
+                        f"🟢 {result['level']} — "
+                        f"{result['risk']:.2f}% estimated risk"
+                    )
+
+                result_col1, result_col2 = st.columns(2)
+
+                result_col1.metric(
+                    "Estimated Failure Risk",
+                    f"{result['risk']:.2f}%",
                 )
 
-                result_report = pd.DataFrame(
+                result_col2.metric(
+                    "Model Result",
+                    result["prediction"],
+                )
+
+                st.subheader("Smart Maintenance Suggestions")
+
+                suggestions = get_recommendations(
+                    sensor_readings,
+                    result["risk"],
+                )
+
+                for suggestion in suggestions:
+                    st.write(f"• {suggestion}")
+
+                report = pd.DataFrame(
                     [
                         {
-                            "machine_id": selected_id,
-                            **readings,
-                            "input_source": (
-                                "CSV readings with optional overrides"
+                            "UDI": selected_machine["machine_id"],
+                            "Product ID": selected_machine["product_id"],
+                            "Type": selected_machine["machine_type"],
+                            "Air temperature [K]": sensor_readings[
+                                "temperature"
+                            ],
+                            "Rotational speed [rpm]": sensor_readings[
+                                "rotational_speed"
+                            ],
+                            "Torque [Nm]": sensor_readings["torque"],
+                            "Tool wear [min]": sensor_readings["tool_wear"],
+                            "Estimated Failure Risk (%)": result["risk"],
+                            "Risk Category": result["level"],
+                            "Model Result": result["prediction"],
+                            "Maintenance Suggestions": " | ".join(
+                                suggestions
                             ),
                         }
                     ]
                 )
 
                 st.download_button(
-                    "Download Prediction Input CSV",
-                    data=result_report.to_csv(
-                        index=False
-                    ).encode("utf-8"),
-                    file_name=f"prediction_{selected_id}.csv",
+                    "Download Prediction Report",
+                    report.to_csv(index=False).encode("utf-8"),
+                    file_name=f"prediction_report_{selected_id}.csv",
                     mime="text/csv",
                 )
 
+                st.caption(
+                    "This is a model estimate trained on historical sample "
+                    "data, not live sensor data or a guarantee of failure."
+                )
+
+            except ValueError as error:
+
+                st.error(str(error))
+
             except Exception as error:
+
                 st.error(
                     f"Prediction failed: {error}"
                 )
 
-        st.divider()
+    # -----------------------------------------------------
+    # ANALYSIS SECTION
+    # -----------------------------------------------------
 
-    # The following analysis uses the original CSV data,
-    # and does not show the entire dataset table here.
-    if original_csv is not None:
+    st.divider()
+    st.subheader("Statistical Analysis")
+
+    valid_data = dataset.dropna(
+        subset=FEATURES + ["failure"]
+    )
+
+    if not valid_data.empty:
+
+        st.markdown("**Random Forest Feature Importance**")
 
         try:
-            analysis_data = prepare_dataset(original_csv)
 
-            st.subheader("Machine Failure Analysis")
+            model = train_failure_model(
+                CSV_PATH,
+                os.path.getmtime(CSV_PATH),
+            )
 
-            col1, col2 = st.columns(2)
+            importance = model.named_steps[
+                "classifier"
+            ].feature_importances_
 
-            with col1:
-                st.pyplot(
-                    machine_status_chart(analysis_data),
-                    clear_figure=True,
-                )
-
-            with col2:
-                st.pyplot(
-                    temperature_chart(analysis_data),
-                    clear_figure=True,
-                )
-
-            st.subheader("Random Forest Feature Importance")
-
-            model = get_model()
-
-            importance = get_feature_importance(model)
+            importance_df = pd.DataFrame(
+                {
+                    "Feature": FEATURES,
+                    "Importance": importance,
+                }
+            ).sort_values(
+                "Importance",
+                ascending=False,
+            )
 
             fig, ax = plt.subplots(figsize=(8, 4))
 
             ax.bar(
-                importance["Feature"],
-                importance["Importance"],
+                importance_df["Feature"],
+                importance_df["Importance"],
             )
 
-            ax.set_xlabel("Machine Feature")
             ax.set_ylabel("Importance")
-            ax.set_title("Feature Importance")
+            ax.set_xlabel("Feature")
 
             ax.tick_params(
                 axis="x",
@@ -981,121 +1144,167 @@ elif page == "Prediction & Analysis":
 
             fig.tight_layout()
 
-            st.pyplot(
-                fig,
-                clear_figure=True,
-            )
-
+            st.pyplot(fig, clear_figure=True)
             plt.close(fig)
 
-            st.subheader("Statistical Summary")
-
             st.dataframe(
-                statistical_summary(analysis_data),
+                importance_df,
                 use_container_width=True,
+                hide_index=True,
             )
 
-            st.subheader("Feature Correlation")
+        except Exception as error:
 
-            st.dataframe(
-                feature_correlation(analysis_data),
-                use_container_width=True,
+            st.warning(
+                f"Feature importance unavailable: {error}"
             )
 
-            st.subheader("Temperature Hypothesis Test")
+        st.markdown("**Statistical Summary**")
 
-            test = temperature_hypothesis_test(
-                analysis_data
+        st.dataframe(
+            valid_data[FEATURES].describe().T,
+            use_container_width=True,
+        )
+
+        st.markdown("**Feature Correlation**")
+
+        correlation = valid_data[FEATURES].corr()
+
+        fig, ax = plt.subplots(figsize=(7, 4))
+
+        image = ax.imshow(
+            correlation,
+            vmin=-1,
+            vmax=1,
+            aspect="auto",
+        )
+
+        ax.set_xticks(range(len(FEATURES)))
+        ax.set_xticklabels(
+            FEATURES,
+            rotation=25,
+            ha="right",
+        )
+
+        ax.set_yticks(range(len(FEATURES)))
+        ax.set_yticklabels(FEATURES)
+
+        fig.colorbar(image, ax=ax)
+
+        fig.tight_layout()
+
+        st.pyplot(fig, clear_figure=True)
+        plt.close(fig)
+
+        st.dataframe(
+            correlation,
+            use_container_width=True,
+        )
+
+        st.markdown("**Temperature Hypothesis Test**")
+
+        no_failure_temp = valid_data.loc[
+            valid_data["failure"] == 0,
+            "temperature",
+        ].dropna()
+
+        failure_temp = valid_data.loc[
+            valid_data["failure"] == 1,
+            "temperature",
+        ].dropna()
+
+        if (
+            len(no_failure_temp) >= 2
+            and len(failure_temp) >= 2
+        ):
+
+            test_result = ttest_ind(
+                no_failure_temp,
+                failure_temp,
+                equal_var=False,
             )
 
-            if test is None:
+            c1, c2 = st.columns(2)
+
+            c1.metric(
+                "Mean Temperature — No Failure",
+                f"{no_failure_temp.mean():.2f} K",
+            )
+
+            c2.metric(
+                "Mean Temperature — Failure",
+                f"{failure_temp.mean():.2f} K",
+            )
+
+            st.write(
+                f"**t-statistic:** {test_result.statistic:.3f}"
+            )
+
+            st.write(
+                f"**p-value:** {test_result.pvalue:.4f}"
+            )
+
+            if test_result.pvalue < 0.05:
 
                 st.info(
-                    "At least two records in both failure groups "
-                    "are required for the hypothesis test."
+                    "The difference between group means is statistically "
+                    "significant at the 5% level."
                 )
 
             else:
 
-                test_col1, test_col2 = st.columns(2)
-
-                test_col1.metric(
-                    "Mean Temperature — No Failure",
-                    f"{test['normal_mean']:.2f}",
+                st.info(
+                    "The test did not find a statistically significant "
+                    "difference at the 5% level."
                 )
 
-                test_col2.metric(
-                    "Mean Temperature — Recorded Failure",
-                    f"{test['failure_mean']:.2f}",
-                )
+        else:
 
-                st.write(
-                    f"**t-statistic:** "
-                    f"{test['t_statistic']:.3f}"
-                )
-
-                st.write(
-                    f"**p-value:** {test['p_value']:.4f}"
-                )
-
-                if test["p_value"] < 0.05:
-
-                    st.success(
-                        "The difference is statistically significant "
-                        "at the 5% significance level."
-                    )
-
-                else:
-
-                    st.info(
-                        "There is insufficient evidence of a difference "
-                        "at the 5% significance level."
-                    )
-
-            st.caption(
-                "Statistical patterns do not prove causation. "
-                "The model and results are for educational use."
-            )
-
-        except Exception as error:
-            st.error(
-                f"Analysis could not be completed: {error}"
+            st.info(
+                "Not enough records to perform the hypothesis test."
             )
 
 
-# ==========================================================
-# PAGE 4: MAINTENANCE REPORT
-# ==========================================================
+# =========================================================
+# 12. PAGE: PERSONALIZED MAINTENANCE REPORT
+# =========================================================
 
 elif page == "Maintenance Report":
 
     st.title("Maintenance Report & Recommendations")
 
     st.write(
-        "Select a machine to view its readings, predicted failure "
-        "risk, and recommended next steps."
+        "Select a machine to create an individual report "
+        "with readings, risk, and maintenance advice."
     )
 
-    data = get_machines()
-
-    if data.empty:
+    if not machine_ids:
 
         st.warning(
-            "No machine records are available for a report."
+            "No available machines. Check the CSV or restore a machine."
         )
 
     else:
 
-        selected_id = st.selectbox(
-            "Select Machine ID",
-            data["machine_id"].astype(str).tolist(),
-            key="report_machine_id",
+        report_machine_id = st.selectbox(
+            "Select Machine",
+            machine_ids,
+            format_func=get_machine_label,
+            key="report_machine_selection",
         )
 
-        machine = get_machine_by_id(selected_id)
+        machine = get_machine(report_machine_id)
 
         st.subheader(
-            f"Machine Report — {selected_id}"
+            f"Maintenance Report — UDI {report_machine_id}"
+        )
+
+        st.write(
+            f"**Product ID:** {machine['product_id']}"
+        )
+
+        st.write(
+            f"**Machine Type:** {machine['machine_type']}"
         )
 
         report_readings = {
@@ -1105,10 +1314,10 @@ elif page == "Maintenance Report":
             "tool_wear": float(machine["tool_wear"]),
         }
 
-        readings_table = pd.DataFrame(
+        reading_df = pd.DataFrame(
             [
                 {
-                    "Sensor": "Temperature [K]",
+                    "Sensor": "Air Temperature [K]",
                     "Reading": report_readings["temperature"],
                 },
                 {
@@ -1127,79 +1336,112 @@ elif page == "Maintenance Report":
         )
 
         st.dataframe(
-            readings_table,
+            reading_df,
             use_container_width=True,
             hide_index=True,
         )
 
         try:
 
-            model = get_model()
+            result = predict_failure(report_readings)
 
-            result = predict_risk(
-                model,
-                report_readings,
-            )
+            if result["color"] == "red":
 
-            metric_col, status_col = st.columns(2)
+                st.error(
+                    f"🔴 {result['level']} — "
+                    f"{result['risk']:.2f}% estimated risk"
+                )
 
-            metric_col.metric(
-                "Estimated Failure Risk",
-                f"{result['risk']:.2f}%",
-            )
+            elif result["color"] == "yellow":
 
-            if result["risk"] >= 50:
-
-                status_col.error(
-                    "Failure predicted by model"
+                st.warning(
+                    f"🟡 {result['level']} — "
+                    f"{result['risk']:.2f}% estimated risk"
                 )
 
             else:
 
-                status_col.success(
-                    "Failure not predicted by model"
+                st.success(
+                    f"🟢 {result['level']} — "
+                    f"{result['risk']:.2f}% estimated risk"
                 )
 
-            st.write(
-                f"**Risk category:** {result['level']}"
+            suggestions = get_recommendations(
+                report_readings,
+                result["risk"],
             )
 
-            st.info(
-                result["recommendation"]
-            )
+            st.subheader("Smart Maintenance Suggestions")
+
+            for suggestion in suggestions:
+                st.write(f"• {suggestion}")
 
             report = pd.DataFrame(
                 [
                     {
-                        "machine_id": selected_id,
-                        **report_readings,
-                        "recorded_failure": int(
-                            machine["failure"]
-                        ),
-                        "estimated_failure_risk_percent": result["risk"],
-                        "risk_category": result["level"],
-                        "recommendation": result["recommendation"],
+                        "UDI": machine["machine_id"],
+                        "Product ID": machine["product_id"],
+                        "Type": machine["machine_type"],
+                        "Air temperature [K]": report_readings[
+                            "temperature"
+                        ],
+                        "Rotational speed [rpm]": report_readings[
+                            "rotational_speed"
+                        ],
+                        "Torque [Nm]": report_readings["torque"],
+                        "Tool wear [min]": report_readings["tool_wear"],
+                        "Recorded Failure": int(machine["failure"]),
+                        "Estimated Failure Risk (%)": result["risk"],
+                        "Risk Category": result["level"],
+                        "Model Result": result["prediction"],
+                        "Maintenance Suggestions": " | ".join(suggestions),
                     }
                 ]
             )
 
             st.download_button(
-                "Download Maintenance Report CSV",
-                data=report.to_csv(
-                    index=False
-                ).encode("utf-8"),
-                file_name=f"maintenance_report_{selected_id}.csv",
+                "Download Personalized Maintenance Report",
+                report.to_csv(index=False).encode("utf-8"),
+                file_name=f"maintenance_report_{report_machine_id}.csv",
                 mime="text/csv",
             )
 
         except Exception as error:
 
             st.error(
-                f"Could not create the maintenance report: {error}"
+                f"Could not create the report: {error}"
             )
 
-        st.caption(
-            "This is an educational demonstration using a sample dataset. "
-            "Predictions are not validated for industrial use and do not "
-            "replace professional inspections."
-        )
+    st.divider()
+    st.subheader("How Sensor Data Reaches This App")
+
+    st.info(
+        "Currently this project reads historical readings from "
+        "ai4i2020.csv. It is not connected to physical sensors."
+    )
+
+    st.markdown(
+        """
+        **Actual sensor data flow for a future version:**
+
+        1. Sensors measure temperature, rotational speed and torque
+           on real equipment.
+        2. A controller such as an ESP32 or an industrial PLC collects
+           the readings.
+        3. The controller sends readings using Wi-Fi/Ethernet to an
+           API or MQTT service.
+        4. The Streamlit application receives those readings, sends
+           them to the trained model, and displays alerts.
+
+        Tool wear is often measured or estimated using tool monitoring,
+        operating time, inspection or specialized sensors. It is not
+        automatically available from an ordinary temperature sensor.
+        """
+    )
+
+    st.caption(
+        "A real sensor connection requires suitable hardware, a data "
+        "transmission method, and additional integration code. "
+        "Current predictions are educational estimates, not validated "
+        "industrial safety decisions."
+    )
