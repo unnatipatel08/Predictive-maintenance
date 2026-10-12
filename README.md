@@ -3,8 +3,13 @@
 A Python and Streamlit project that demonstrates how machine sensor readings can be used to estimate industrial machine failure risk and provide maintenance alerts.
 
 > **Educational Demo Project:** This system uses demonstration data. Predictions are not validated for real industrial safety or maintenance decisions. The current app does not receive live physical-sensor data.
+>
+> # 🚀 Live AI-Based Predictive Maintenance System
+
+[https://predictive-maintenance-npzh9ubtjnm9epvwhzteqq.streamlit.app/](url)
 
 ## 🚀 Project Features
+
 
 ### 1. Dashboard
 - Displays all original columns and records from `ai4i2020.csv`.
