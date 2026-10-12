@@ -6,7 +6,8 @@ A Python and Streamlit project that demonstrates how machine sensor readings can
 >
 > # 🚀 Live AI-Based Predictive Maintenance System
 
-[AI-Based Predictive Maintenance System · Streamlit]https://predictive-maintenance-npzh9ubtjnm9epvwhzteqq.streamlit.app/
+[predictive-maintenance-npzh9ubtjnm9epvwhzteqq](url)
+
 ## 🚀 Project Features
 
 
