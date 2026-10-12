@@ -1,2 +1,0 @@
-UDI,Product ID,Type,Air temperature [K],Rotational speed [rpm],Torque [Nm],Tool wear [min],Estimated Failure Risk (%),Risk Category,Model Result,Maintenance Suggestions
-2,L47181,L,298.1,42.8,1551.0,0.0,37.83052453668728,Medium Risk,Failure not predicted,MEDIUM RISK: Plan a maintenance inspection and continue monitoring the sensor readings. | Rotational speed is outside the usual dataset range. Check the operating conditions and RPM sensor. | Torque is unusually high compared with this dataset. Check machine load and tooling.
